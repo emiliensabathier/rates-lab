@@ -68,6 +68,10 @@ def bootstrap(maturities: np.ndarray, par_yields: np.ndarray) -> PiecewiseZeroCu
     par_yields = np.asarray(par_yields, dtype=float)
     if maturities.shape != par_yields.shape:
         raise ModelError("maturities and par yields must have the same length")
+    if not np.all(np.isfinite(maturities)):
+        raise ModelError("maturities contains non-finite values (NaN or inf)")
+    if not np.all(np.isfinite(par_yields)):
+        raise ModelError("par_yields contains non-finite values (NaN or inf)")
     if np.any(np.diff(maturities) <= 0):
         raise ModelError("maturities must be strictly increasing")
 

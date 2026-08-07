@@ -73,6 +73,20 @@ def test_unsorted_maturities_raise():
         bootstrap(np.array([2.0, 1.0]), np.array([0.04, 0.04]))
 
 
+def test_nan_in_par_yields_raises():
+    maturities = np.array([0.5, 1.0, 2.0])
+    par = np.array([0.04, np.nan, 0.04])
+    with pytest.raises(ModelError, match="par_yields contains non-finite values"):
+        bootstrap(maturities, par)
+
+
+def test_inf_in_maturities_raises():
+    maturities = np.array([0.5, 1.0, np.inf])
+    par = np.array([0.04, 0.04, 0.04])
+    with pytest.raises(ModelError, match="maturities contains non-finite values"):
+        bootstrap(maturities, par)
+
+
 def test_cmt_tenors_cover_the_eleven_published_pillars():
     assert len(CMT_TENORS) == 11
     assert CMT_TENORS["DGS1MO"] == pytest.approx(1 / 12)
