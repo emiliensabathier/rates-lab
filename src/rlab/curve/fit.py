@@ -37,6 +37,10 @@ def fit_svensson(
     rates = np.asarray(rates, dtype=float)
     if maturities.shape != rates.shape:
         raise ModelError("maturities and rates must have the same length")
+    if not np.all(np.isfinite(maturities)):
+        raise ModelError("maturities contains non-finite values (NaN or inf)")
+    if not np.all(np.isfinite(rates)):
+        raise ModelError("rates contains non-finite values (NaN or inf)")
     if maturities.size < 6:
         raise ModelError(f"a Svensson fit needs at least 6 pillars, got {maturities.size}")
 

@@ -58,3 +58,20 @@ def test_fewer_than_six_pillars_raises():
     maturities = np.array([1.0, 2.0, 5.0])
     with pytest.raises(ModelError, match="at least 6"):
         fit_svensson(maturities, np.full_like(maturities, 0.04), compounding="continuous")
+
+
+def test_non_finite_rates_raise():
+    # A missing upstream pillar can arrive as NaN rather than being dropped. The fit must
+    # reject it at the door instead of letting it poison every lstsq solve in the sweep and
+    # then slip past the worst_bp > max_error_bp check, since nan > anything is False.
+    maturities = np.array([0.5, 1.0, 2.0, 5.0, 10.0, 30.0])
+    rates = np.array([0.04, 0.04, np.nan, 0.04, 0.04, 0.04])
+    with pytest.raises(ModelError, match="rates"):
+        fit_svensson(maturities, rates, compounding="continuous")
+
+
+def test_non_finite_maturities_raise():
+    maturities = np.array([0.5, 1.0, np.inf, 5.0, 10.0, 30.0])
+    rates = np.full_like(maturities, 0.04)
+    with pytest.raises(ModelError, match="maturities"):
+        fit_svensson(maturities, rates, compounding="continuous")
