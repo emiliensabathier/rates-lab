@@ -64,6 +64,12 @@ class SvenssonCurve(Curve):
     def rate(self, t: float | np.ndarray) -> np.ndarray:
         """The Svensson rate, as a decimal, in this curve's own compounding convention."""
         maturity = np.asarray(t, dtype=float)
+        # _loading's np.where(x > 1e-8, ...) takes the short-end limit branch for every
+        # x <= 1e-8, including negative maturities, which would otherwise silently fabricate
+        # a rate instead of raising. t == 0 must still work (the short-end limit tests rely
+        # on it), so the guard is on < 0, not <= 0.
+        if np.any(maturity < 0):
+            raise ModelError(f"Svensson rate undefined for negative maturity, got {t}")
         p = self.params
         slope1, curve1 = _loading(maturity, p.tau1)
         _, curve2 = _loading(maturity, p.tau2)

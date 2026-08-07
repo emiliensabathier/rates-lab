@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from rlab.curve.svensson import SvenssonCurve, SvenssonParams
+from rlab.errors import ModelError
 
 ECB_2026_08_06 = SvenssonParams(
     beta0=1.2866240787,
@@ -63,3 +64,12 @@ def test_annual_compounding_discounts_differently_from_continuous():
 def test_round_trip_through_the_parameter_array():
     restored = SvenssonParams.from_array(ECB_2026_08_06.as_array())
     assert restored == ECB_2026_08_06
+
+
+def test_negative_maturity_raises_instead_of_fabricating_a_rate():
+    # _loading's x > 1e-8 branch also catches negative x, so without an explicit guard a
+    # negative maturity would silently take the short-end limit and return a meaningless
+    # number instead of failing.
+    curve = SvenssonCurve(ECB_2026_08_06, compounding="annual")
+    with pytest.raises(ModelError, match="negative maturity"):
+        curve.rate(-5.0)

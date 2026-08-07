@@ -19,7 +19,7 @@ class Curve(ABC):
 
     @abstractmethod
     def discount(self, t: float | np.ndarray) -> np.ndarray:
-        """Present value of one unit paid at maturity `t`."""
+        """Present value of one unit paid at maturity `t`. Contract: `t >= 0`."""
 
     def zero(self, t: float | np.ndarray) -> np.ndarray:
         """Continuously compounded zero rate."""
