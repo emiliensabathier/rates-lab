@@ -32,6 +32,21 @@ def test_spot_keys_cover_three_months_to_thirty_years_and_exclude_one_month():
     assert "SR_1M" not in ecb.SPOT_KEYS
 
 
+def test_empty_payload_raises():
+    header = (
+        "KEY,FREQ,REF_AREA,CURRENCY,PROVIDER_FM,INSTRUMENT_FM,PROVIDER_FM_ID,DATA_TYPE_FM,"
+        "TIME_PERIOD,OBS_VALUE,OBS_STATUS\n"
+    )
+    with pytest.raises(DataError, match="no observation rows"):
+        ecb.parse_csv(header)
+
+
+def test_non_numeric_value_raises():
+    bad = SAMPLE.replace("3.146678757", "not-a-number")
+    with pytest.raises(DataError, match="SR_10Y"):
+        ecb.parse_csv(bad)
+
+
 def test_load_joins_keys_on_a_union_index(tmp_path: Path):
     payloads = {
         "SR_10Y": SAMPLE,

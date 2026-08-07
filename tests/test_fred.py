@@ -34,6 +34,21 @@ def test_unexpected_header_raises_rather_than_guessing():
         fred.parse_csv("date;value\n2025-12-24;4.15\n")
 
 
+def test_empty_payload_raises():
+    with pytest.raises(DataError, match="DGS10.*no observation rows"):
+        fred.parse_csv("observation_date,DGS10\n")
+
+
+def test_non_numeric_value_raises():
+    with pytest.raises(DataError, match="DGS10"):
+        fred.parse_csv("observation_date,DGS10\n2025-12-24,abc\n")
+
+
+def test_all_missing_markers_return_an_empty_series_not_an_error():
+    series = fred.parse_csv("observation_date,DGS10\n2025-12-24,\n2025-12-25,.\n")
+    assert len(series) == 0
+
+
 def test_load_joins_series_on_a_union_index(tmp_path: Path):
     payloads = {
         "DGS2": "observation_date,DGS2\n2026-08-04,4.20\n2026-08-05,4.18\n",

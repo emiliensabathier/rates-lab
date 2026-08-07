@@ -57,9 +57,15 @@ def parse_csv(text: str) -> pd.Series:
     for column in ("TIME_PERIOD", "OBS_VALUE", "DATA_TYPE_FM"):
         if column not in frame.columns:
             raise DataError(f"ECB export is missing column {column}")
+    if frame.empty:
+        raise DataError("ECB export has no observation rows")
     key = frame["DATA_TYPE_FM"].iloc[0]
+    try:
+        values = frame["OBS_VALUE"].astype(float).to_numpy()
+    except ValueError as exc:
+        raise DataError(f"ECB export for {key} has a non-numeric OBS_VALUE") from exc
     return pd.Series(
-        frame["OBS_VALUE"].astype(float).to_numpy(),
+        values,
         index=pd.to_datetime(frame["TIME_PERIOD"]),
         name=key,
     )

@@ -41,9 +41,15 @@ def parse_csv(text: str) -> pd.Series:
     if len(frame.columns) != 2 or frame.columns[0] != "observation_date":
         raise DataError(f"unexpected FRED header {list(frame.columns)}, expected observation_date")
     series_id = frame.columns[1]
+    if frame.empty:
+        raise DataError(f"FRED export for {series_id} has no observation rows")
     kept = frame[~frame[series_id].str.strip().isin(MISSING_MARKERS)]
+    try:
+        raw_values = kept[series_id].astype(float).to_numpy()
+    except ValueError as exc:
+        raise DataError(f"FRED export for {series_id} has a non-numeric value") from exc
     values = pd.Series(
-        kept[series_id].astype(float).to_numpy(),
+        raw_values,
         index=pd.to_datetime(kept["observation_date"]),
         name=series_id,
     )
