@@ -171,6 +171,15 @@ The tests run offline. Both loaders take an injected fetcher, so parsing is test
 captured payloads and no test depends on FRED or the ECB being up; the tests that would hit
 the network are marked `network` and deselected by default.
 
+## Related
+
+Three companion studies, same method: a frozen capture, a rendered report, and a
+limitations section longer than the results.
+
+- [valuation-lab](https://github.com/emiliensabathier/valuation-lab) — what a share price already assumes, by inverting a DCF
+- [credit-lab](https://github.com/emiliensabathier/credit-lab) — which default score flags first, against real credit events
+- [portfolio-lab](https://github.com/emiliensabathier/portfolio-lab) — whether any allocation rule beats a static 60/40
+
 ## Licence
 
 MIT.
