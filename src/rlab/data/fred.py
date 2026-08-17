@@ -79,4 +79,8 @@ def load(
                 json.dumps({"fetched_at": datetime.now(UTC).isoformat()}), encoding="utf-8"
             )
         columns.append(parse_csv(payload.read_text(encoding="utf-8")))
-    return pd.concat(columns, axis=1)
+    # sort=False is explicit because pandas is changing the default: series with different
+    # observation calendars would otherwise be joined on a silently re-sorted index, and a
+    # yield curve panel whose dates quietly reorder is the kind of bug that shows up much
+    # later, as a curve dated to the wrong month.
+    return pd.concat(columns, axis=1, sort=False).sort_index()
