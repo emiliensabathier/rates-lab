@@ -37,12 +37,17 @@ def _new_figure(title: str, ylabel: str) -> tuple[Figure, object]:
     return fig, axes
 
 
-def decomposition_chart(observed: pd.Series, expectations: pd.Series) -> str:
+def decomposition_figure(observed: pd.Series, expectations: pd.Series) -> Figure:
     """The ten-year yield split into what it expects and what it charges.
 
     The premium is drawn as the band between the two lines rather than as a third line,
     because it is the gap: a reader should not have to hold two levels in their head to
     see it.
+
+    Returned as a figure rather than as markup, because the README needs the same chart as
+    a raster: GitHub does not render a committed HTML report, so the one picture that makes
+    the point has to travel separately. Everything else in this module serialises straight
+    to SVG; this is the only chart with a second consumer.
     """
     fig, axes = _new_figure(
         "Ten-year yield: expected average short rate, and the premium on top",
@@ -56,7 +61,12 @@ def decomposition_chart(observed: pd.Series, expectations: pd.Series) -> str:
                       alpha=0.25, color="#c0714a", label="Term premium")
     axes.axhline(0.0, color="#9aa0ad", linewidth=0.8)
     axes.legend(loc="upper right", frameon=False)
-    return figure_to_svg(fig)
+    return fig
+
+
+def decomposition_chart(observed: pd.Series, expectations: pd.Series) -> str:
+    """The decomposition chart as inline SVG, for the report."""
+    return figure_to_svg(decomposition_figure(observed, expectations))
 
 
 def benchmark_chart(estimated: pd.Series, published: pd.Series) -> str:

@@ -16,6 +16,12 @@ The ten-year zero rate, split into what the curve expects the short rate to aver
 years and what it charges on top for holding the duration. Quoting the first number as the
 market's view of rates means quoting 2.22 points of premium as if it were a forecast.
 
+![Ten-year yield decomposed into the expected average short rate and the term premium](docs/term-premium.png)
+
+The shaded band is the premium. It compressed to almost nothing through the QE decade and
+reopened from 2022 — the ten-year yield rose far more than the expected path of policy did,
+and a reader who took the yield as a forecast would have read that as a rate expectation.
+
 | | Value |
 | --- | --- |
 | Correlation with the Fed Board's Kim-Wright premium, levels | 0.925 |
