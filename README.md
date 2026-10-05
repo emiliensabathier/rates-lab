@@ -173,12 +173,13 @@ the network are marked `network` and deselected by default.
 
 ## Related
 
-Three companion studies, same method: a frozen capture, a rendered report, and a
+Four companion studies, same method: a frozen capture, a rendered report, and a
 limitations section longer than the results.
 
 - [valuation-lab](https://github.com/emiliensabathier/valuation-lab) — what a share price already assumes, by inverting a DCF
 - [credit-lab](https://github.com/emiliensabathier/credit-lab) — which default score flags first, against real credit events
 - [portfolio-lab](https://github.com/emiliensabathier/portfolio-lab) — whether any allocation rule beats a static 60/40
+- [options-lab](https://github.com/emiliensabathier/options-lab) — what S&P 500 implied volatility prices: an arbitrage-free surface and the variance premium
 
 ## Licence
 
