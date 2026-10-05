@@ -1,8 +1,12 @@
-"""Principal components of daily yield-curve changes.
+"""Principal components of a yield-curve panel.
 
-Three components — level, slope, curvature — normally account for almost all of the
-variance of a government curve. That is the sanity check of this whole project: if they do
-not, the curve built upstream is wrong, and every number derived from it is too.
+The function is agnostic about what it is handed, and the two callers hand it different
+things on purpose. The report decomposes monthly *changes*: three components -- level,
+slope, curvature -- normally account for almost all of the variance of a government curve's
+moves, and that is the sanity check on the curve built upstream. ACM decomposes *levels*,
+because its pricing factors are the principal components of the yield panel itself. On
+levels the first component also absorbs the persistence of rates, so a share of variance
+computed there overstates how much of the curve's movement it explains.
 
 Written on numpy's SVD rather than pulled from a library, because the sign convention
 matters here and libraries do not agree on it.
@@ -26,17 +30,15 @@ class PCAResult:
     explained: np.ndarray
 
 
-def decompose(changes: np.ndarray, n_components: int = 3) -> PCAResult:
-    """Decompose a panel of curve changes into its principal components."""
-    panel = np.asarray(changes, dtype=float)
+def decompose(panel: np.ndarray, n_components: int = 3) -> PCAResult:
+    """Decompose a (observations, tenors) panel, of levels or of changes, into components."""
+    panel = np.asarray(panel, dtype=float)
     if panel.ndim != 2:
         raise ModelError(f"expected a 2-D panel, got shape {panel.shape}")
     if np.any(~np.isfinite(panel)):
         raise ModelError("panel contains missing or non-finite values")
     if n_components > panel.shape[1]:
-        raise ModelError(
-            f"cannot extract {n_components} components from {panel.shape[1]} tenors"
-        )
+        raise ModelError(f"cannot extract {n_components} components from {panel.shape[1]} tenors")
 
     centred = panel - panel.mean(axis=0)
     _, singular, right = np.linalg.svd(centred, full_matrices=False)

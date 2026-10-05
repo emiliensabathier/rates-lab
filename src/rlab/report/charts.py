@@ -53,12 +53,28 @@ def decomposition_figure(observed: pd.Series, expectations: pd.Series) -> Figure
         "Ten-year yield: expected average short rate, and the premium on top",
         "Percent",
     )
-    axes.plot(observed.index, observed * PERCENT, linewidth=1.3, color="#16181d",
-              label="Observed ten-year zero")
-    axes.plot(expectations.index, expectations * PERCENT, linewidth=1.1, color="#4a6fa5",
-              label="Expected average short rate")
-    axes.fill_between(observed.index, expectations * PERCENT, observed * PERCENT,
-                      alpha=0.25, color="#c0714a", label="Term premium")
+    axes.plot(
+        observed.index,
+        observed * PERCENT,
+        linewidth=1.3,
+        color="#16181d",
+        label="Observed ten-year zero",
+    )
+    axes.plot(
+        expectations.index,
+        expectations * PERCENT,
+        linewidth=1.1,
+        color="#4a6fa5",
+        label="Expected average short rate",
+    )
+    axes.fill_between(
+        observed.index,
+        expectations * PERCENT,
+        observed * PERCENT,
+        alpha=0.25,
+        color="#c0714a",
+        label="Term premium",
+    )
     axes.axhline(0.0, color="#9aa0ad", linewidth=0.8)
     axes.legend(loc="upper right", frameon=False)
     return fig
@@ -71,13 +87,21 @@ def decomposition_chart(observed: pd.Series, expectations: pd.Series) -> str:
 
 def benchmark_chart(estimated: pd.Series, published: pd.Series) -> str:
     """This estimate against the Federal Reserve Board's Kim-Wright series."""
-    fig, axes = _new_figure(
-        "Ten-year term premium: this estimate against Kim-Wright", "Percent"
+    fig, axes = _new_figure("Ten-year term premium: this estimate against Kim-Wright", "Percent")
+    axes.plot(
+        estimated.index,
+        estimated * PERCENT,
+        linewidth=1.3,
+        color="#c0714a",
+        label="ACM, this repository",
     )
-    axes.plot(estimated.index, estimated * PERCENT, linewidth=1.3, color="#c0714a",
-              label="ACM, this repository")
-    axes.plot(published.index, published * PERCENT, linewidth=1.3, color="#4a6fa5",
-              label="Kim-Wright, Federal Reserve Board")
+    axes.plot(
+        published.index,
+        published * PERCENT,
+        linewidth=1.3,
+        color="#4a6fa5",
+        label="Kim-Wright, Federal Reserve Board",
+    )
     axes.axhline(0.0, color="#9aa0ad", linewidth=0.8)
     axes.legend(loc="upper right", frameon=False)
     return figure_to_svg(fig)
@@ -88,8 +112,9 @@ def fit_chart(maturities_months: np.ndarray, observed: np.ndarray, fitted: np.nd
     years = maturities_months / 12.0
     fig, axes = _new_figure("Latest curve: observed against the ACM fit", "Percent")
     axes.plot(years, observed * PERCENT, linewidth=1.6, color="#16181d", label="Observed zero")
-    axes.plot(years, fitted * PERCENT, linewidth=1.2, color="#c0714a", linestyle="--",
-              label="ACM fitted")
+    axes.plot(
+        years, fitted * PERCENT, linewidth=1.2, color="#c0714a", linestyle="--", label="ACM fitted"
+    )
     axes.set_xlabel("Maturity, years")
     axes.legend(loc="lower right", frameon=False)
     return figure_to_svg(fig)
@@ -111,7 +136,12 @@ def loadings_chart(maturities_months: np.ndarray, loadings: np.ndarray) -> str:
 def policy_chart(path: pd.DataFrame) -> str:
     """The three-month forward path the latest curve prices."""
     fig, axes = _new_figure("Policy path priced by the latest curve", "Percent")
-    axes.step(path["start"], path["forward_quoted"] * PERCENT, where="post",
-              linewidth=1.4, color="#4a6fa5")
+    axes.step(
+        path["start"],
+        path["forward_quoted"] * PERCENT,
+        where="post",
+        linewidth=1.4,
+        color="#4a6fa5",
+    )
     axes.set_xlabel("Years forward")
     return figure_to_svg(fig)

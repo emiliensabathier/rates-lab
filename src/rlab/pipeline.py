@@ -12,10 +12,15 @@ longest maturity, and the twenty- and thirty-year CMT series carry the 2002-2006
 the thirty-year bond was not issued. Requiring them would delete four years of history to
 buy maturities the decomposition does not use.
 
-The monthly grid is sampled from the bootstrapped curve, which is linear in zero space
-between the nine published pillars. The cross-section therefore carries nine independent
-points dressed as a hundred and twenty, and the ACM fit should be read with that in mind:
-it is fitting an interpolation, not a hundred and twenty separate quotes.
+The monthly grid is sampled from the bootstrapped curve, a monotone cubic on log discount
+factors through the nine published pillars. The cross-section therefore carries nine
+independent points dressed as a hundred and twenty, and the ACM fit should be read with
+that in mind: it is fitting an interpolation, not a hundred and twenty separate quotes.
+
+Each month is dated by the day its last complete set of quotes printed, not by the calendar
+month-end, and a final month that has not finished trading at capture time is dropped:
+labelling a mid-month curve with the 31st would put a date on the page that had not yet
+happened when the data was pulled, and would make the last VAR step half a month long.
 """
 
 from __future__ import annotations
@@ -70,6 +75,7 @@ class Result:
     """Everything the report shows, and nothing it computes itself."""
 
     dates: pd.DatetimeIndex
+    consecutive: np.ndarray
     panel: np.ndarray
     acm: ACMResult
     pca: PCAResult
@@ -86,7 +92,7 @@ class Result:
 
     @property
     def expectations_10y(self) -> pd.Series:
-        return pd.Series(self.acm.risk_neutral[:, -1], index=self.dates, name="expectations")
+        return pd.Series(self.acm.expectations[:, -1], index=self.dates, name="expectations")
 
     @property
     def fitted_10y(self) -> pd.Series:
@@ -100,27 +106,52 @@ class Result:
     def fit_error_bp(self) -> np.ndarray:
         return np.abs(self.acm.fitted - self.panel) * 1e4
 
+    @property
+    def average_short_rate(self) -> float:
+        """Sample mean of the one-month zero rate, the level ACM expectations revert to."""
+        return float(self.panel[:, 0].mean())
+
 
 def month_end_quotes(daily: pd.DataFrame, pillars: dict[str, float]) -> pd.DataFrame:
-    """The last day of each month on which every pillar printed, as decimals."""
+    """The last day of each month on which every pillar printed, as decimals.
+
+    Indexed by that day, not by the calendar month-end. The final month is dropped when its
+    last quote is earlier than the month's last business day, because then the month had not
+    finished when the data was captured. A final month whose last business day was a market
+    holiday would be dropped too; that costs one month at the very end, never a wrong date.
+    """
     missing = [series for series in pillars if series not in daily.columns]
     if missing:
         raise DataError(f"missing series {missing} in the loaded frame")
     complete = daily[list(pillars)].dropna()
     if complete.empty:
         raise DataError("no date has a quote for every pillar")
-    return complete.resample("ME").last().dropna() / 100.0
+    last_per_month = complete.groupby(complete.index.to_period("M")).tail(1)
+    final = last_per_month.index[-1]
+    if final < final + pd.offsets.BMonthEnd(0):
+        last_per_month = last_per_month.iloc[:-1]
+    if last_per_month.empty:
+        raise DataError("no month has finished trading in the loaded frame")
+    return last_per_month / 100.0
 
 
-def build_panel(quotes: pd.DataFrame, pillars: dict[str, float]) -> tuple[
-    pd.DatetimeIndex, np.ndarray, dict[str, str]
-]:
+def consecutive_months(dates: pd.DatetimeIndex) -> np.ndarray:
+    """For each adjacent pair of dates, whether the second is in the month after the first."""
+    ordinals = np.array([period.ordinal for period in dates.to_period("M")])
+    return np.diff(ordinals) == 1
+
+
+def build_panel(
+    quotes: pd.DataFrame, pillars: dict[str, float]
+) -> tuple[pd.DatetimeIndex, np.ndarray, dict[str, str]]:
     """Bootstrap each month's curve and sample it on the monthly maturity grid.
 
-    A month whose quotes do not admit a positive, decreasing discount curve is dropped and
-    the reason recorded. That happens: at the end of 2008 and again in 2011 the front of
-    the bill curve implies a negative forward rate, and a curve builder that smoothed it
-    away would be inventing a quote nobody published.
+    A month whose quotes imply a negative forward rate, so that no positive, non-increasing
+    discount curve reprices them, is dropped and the reason recorded. On the frozen capture
+    no month is: the seven months an earlier, linearly interpolated version refused were
+    artefacts of that interpolation (and, once, of treating a zero forward as negative). The
+    check stays, because a curve builder that smoothed a genuine one away would be inventing
+    a quote nobody published, and `consecutive_months` keeps the VAR honest if it fires.
     """
     maturities = np.array(list(pillars.values()), dtype=float)
     rows: list[np.ndarray] = []
@@ -144,9 +175,10 @@ def build_panel(quotes: pd.DataFrame, pillars: dict[str, float]) -> tuple[
 def _real_curve(daily: pd.DataFrame, as_of: pd.Timestamp) -> Curve:
     """Bootstrap the TIPS curve as of one date, from the two published pillars used here.
 
-    The first pillar is five years, so everything shorter is flat at the five-year real
-    zero. That is an approximation, and it is harmless for the two numbers taken off this
-    curve -- both are read at five years or beyond.
+    The first pillar is five years, so everything shorter is interpolated from zero at
+    maturity zero and means nothing. That is harmless for the two numbers taken off this
+    curve: the spot is read at ten years and the 5y5y forward between the two pillars, and
+    both depend only on the pillar discount factors.
     """
     quotes = daily[list(REAL_PILLARS)].dropna()
     available = quotes.loc[:as_of]
@@ -169,12 +201,17 @@ def run(
     quotes = month_end_quotes(daily, NOMINAL_PILLARS)
     dates, panel, refusals = build_panel(quotes, NOMINAL_PILLARS)
 
-    pca = decompose(panel, n_components=N_COMPONENTS)
-    acm = estimate(panel, MATURITY_MONTHS, n_factors=N_FACTORS)
+    consecutive = consecutive_months(dates)
 
-    benchmark = (
-        daily[BENCHMARK_SERIES].resample("ME").last().reindex(dates).astype(float) / 100.0
-    )
+    # The variance decomposition is of monthly changes, the standard way to ask what moves
+    # the curve; on levels the first component soaks up the persistence of rates and
+    # overstates how much of the movement it explains. ACM, below, takes its pricing
+    # factors from levels, as the method specifies.
+    pca = decompose(np.diff(panel, axis=0)[consecutive], n_components=N_COMPONENTS)
+    acm = estimate(panel, MATURITY_MONTHS, n_factors=N_FACTORS, consecutive=consecutive)
+
+    # Same-day comparison: Kim-Wright on the day the curve was built, or not at all.
+    benchmark = daily[BENCHMARK_SERIES].reindex(dates).astype(float) / 100.0
     benchmark.name = "kim_wright"
 
     as_of = dates[-1]
@@ -185,6 +222,7 @@ def run(
 
     return Result(
         dates=dates,
+        consecutive=consecutive,
         panel=panel,
         acm=acm,
         pca=pca,
@@ -192,25 +230,38 @@ def run(
         latest_curve=latest_curve,
         policy_path=implied_path(latest_curve, horizon_years=2.0),
         breakeven_spot_10y=breakeven(latest_curve, real_curve, TEN_YEARS),
-        breakeven_forward_5y5y=forward_breakeven(
-            latest_curve, real_curve, FIVE_YEARS, TEN_YEARS
-        ),
+        breakeven_forward_5y5y=forward_breakeven(latest_curve, real_curve, FIVE_YEARS, TEN_YEARS),
         refusals=refusals,
     )
+
+
+def _one_month_changes(frame: pd.DataFrame) -> pd.DataFrame:
+    """Month-on-month changes, keeping only pairs that are genuinely one month apart."""
+    steps = consecutive_months(pd.DatetimeIndex(frame.index))
+    return frame.diff().iloc[1:][steps]
 
 
 def agreement(result: Result) -> dict[str, float]:
     """How the estimate compares with the published Kim-Wright series.
 
-    Three numbers, and the order matters: the correlations are the claim, the mean gap is
-    the disclaimer. Reporting the first without the second would be picking the flattering
-    half of a comparison this package went looking for.
+    Each correlation comes with a naive benchmark: the same correlation computed with the
+    observed ten-year yield in place of the model's premium. Kim-Wright attributes most of a
+    monthly yield move to the premium, so the yield alone tracks its changes closely, and a
+    model correlation is only evidence of anything to the extent it beats that. The mean gap
+    is the disclaimer on the level.
     """
-    joined = pd.concat([result.term_premium_10y, result.benchmark], axis=1).dropna()
-    changes = joined.diff().dropna()
+    joined = pd.concat(
+        [result.term_premium_10y, result.benchmark, result.observed_10y], axis=1
+    ).dropna()
+    changes = _one_month_changes(joined)
+    model, published, observed = "term_premium", "kim_wright", "observed"
     return {
-        "correlation_levels": float(joined.iloc[:, 0].corr(joined.iloc[:, 1])),
-        "correlation_changes": float(changes.iloc[:, 0].corr(changes.iloc[:, 1])),
-        "mean_gap": float((joined.iloc[:, 0] - joined.iloc[:, 1]).mean()),
+        "correlation_levels": float(joined[model].corr(joined[published])),
+        "correlation_changes": float(changes[model].corr(changes[published])),
+        "naive_correlation_levels": float(joined[observed].corr(joined[published])),
+        "naive_correlation_changes": float(changes[observed].corr(changes[published])),
+        "mean_gap": float((joined[model] - joined[published]).mean()),
+        "latest_gap": float(joined[model].iloc[-1] - joined[published].iloc[-1]),
+        "latest_kim_wright": float(joined[published].iloc[-1]),
         "observations": float(len(joined)),
     }

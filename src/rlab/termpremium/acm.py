@@ -10,7 +10,8 @@ Four steps, three of which are plain regressions:
   3. regressing excess holding-period returns on the innovations and the lagged factors
      gives the exposures and, through them, the price of risk;
   4. the affine recursion turns factors into log bond prices, run twice — once under the
-     estimated risk-neutral dynamics, once with the price of risk switched off.
+     risk-adjusted (pricing, Q) dynamics, once under the estimated physical (P) dynamics
+     with the price of risk switched off.
 
 The gap between the two runs is the term premium. That subtraction is an identity, not an
 estimate, which is what the first test pins down.
@@ -20,9 +21,21 @@ wrong. First, the price of risk enters the risk-neutral dynamics directly, `mu -
 and `phi - lambda1`, not scaled by the innovation covariance: the regression already
 returns lambda in those units, and multiplying by sigma a second time shrinks the whole
 premium by roughly five orders of magnitude, leaving a decomposition that always prints
-zero. Second, `fitted` is the curve priced under the risk-neutral dynamics — the one that
-reproduces the observed panel — while `risk_neutral` is the counterfactual with the price
-of risk set to zero, which is the expectations component and does *not* track the data.
+zero. Second, `fitted` is the curve priced under the risk-adjusted dynamics `mu - lambda0`,
+`phi - lambda1` — the pricing measure, the one that reproduces the observed panel — while
+`expectations` is priced under the physical dynamics `mu`, `phi`, i.e. what yields would be
+if investors were risk-neutral. ACM call that series the "risk-neutral yield", which is the
+opposite of what "risk-neutral" means for the pricing measure; this module avoids the word.
+It is the expected average short rate, and it does *not* track the data.
+
+The VAR and the excess-return regression use only pairs of observations one month apart.
+When a month is missing from the panel, the pair that straddles the gap is a two-month step,
+and feeding it to a monthly VAR would mis-state both the dynamics and the holding-period
+returns. `consecutive` marks which pairs are genuine one-month steps.
+
+Every parameter is estimated on the full sample, so the premium at any past date uses data
+from after that date. The series is a historical decomposition, not something that could
+have been computed in real time.
 
 The estimator wants a monthly maturity grid, because a one-month holding period turns an
 n-month bond into an (n-1)-month bond and that leg has to be on the grid rather than
@@ -50,9 +63,8 @@ class ACMResult:
     """Yields are annualised and continuously compounded, shaped (months, maturities)."""
 
     fitted: np.ndarray
-    risk_neutral: np.ndarray
+    expectations: np.ndarray
     term_premium: np.ndarray
-    maturities_months: np.ndarray
     lambda0: np.ndarray
     lambda1: np.ndarray
 
@@ -89,9 +101,12 @@ def _price_of_risk(
     innovations: np.ndarray,
     sigma: np.ndarray,
     n_factors: int,
+    consecutive: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, float]:
-    """Regress excess holding-period returns to get lambda0, lambda1 and the residual scale."""
-    months = panel.shape[0]
+    """Regress excess holding-period returns to get lambda0, lambda1 and the residual scale.
+
+    `innovations` holds one row per consecutive pair, in order, matching `consecutive`.
+    """
     log_prices = -panel * maturities / MONTHS_PER_YEAR
     # The one-month bond is the riskless leg over a one-month holding period. It is the
     # first column of the grid, and using any longer maturity here inflates the leg in
@@ -101,12 +116,15 @@ def _price_of_risk(
     # Holding an n-month bond for one month leaves an (n-1)-month bond, which on a monthly
     # grid is the neighbouring column. Columns run n = 2 ... N.
     excess = log_prices[1:, :-1] - log_prices[:-1, 1:] - short_rate[:-1, None]
+    excess = excess[consecutive]
 
-    regressors = np.column_stack([np.ones(months - 1), innovations, factors[:-1]])
+    regressors = np.column_stack(
+        [np.ones(innovations.shape[0]), innovations, factors[:-1][consecutive]]
+    )
     loadings = _ols(regressors, excess)
-    intercept = loadings[0]                           # (N-1,)
-    beta = loadings[1 : 1 + n_factors]                # (K, N-1)
-    exposure = loadings[1 + n_factors :]              # (K, N-1)
+    intercept = loadings[0]  # (N-1,)
+    beta = loadings[1 : 1 + n_factors]  # (K, N-1)
+    exposure = loadings[1 + n_factors :]  # (K, N-1)
     residuals = excess - regressors @ loadings
     residual_variance = np.mean(residuals**2, axis=0)  # (N-1,)
 
@@ -145,34 +163,58 @@ def _yields_from_recursion(
     return -log_prices / maturities[None, :] * MONTHS_PER_YEAR
 
 
+def _consecutive_mask(consecutive: np.ndarray | None, months: int) -> np.ndarray:
+    if consecutive is None:
+        return np.ones(months - 1, dtype=bool)
+    mask = np.asarray(consecutive)
+    if mask.dtype != bool or mask.shape != (months - 1,):
+        raise ModelError(
+            f"consecutive must be a boolean array of length {months - 1}, one entry per pair "
+            f"of adjacent observations, got {mask.dtype} of shape {mask.shape}"
+        )
+    if mask.sum() < MIN_OBSERVATIONS - 1:
+        raise ModelError(
+            f"ACM needs at least {MIN_OBSERVATIONS} one-month steps, got {int(mask.sum())}"
+        )
+    return mask
+
+
 def estimate(
-    yields: np.ndarray, maturities_months: np.ndarray, n_factors: int = 5
+    yields: np.ndarray,
+    maturities_months: np.ndarray,
+    n_factors: int = 5,
+    consecutive: np.ndarray | None = None,
 ) -> ACMResult:
-    """Decompose a monthly panel of continuously compounded zero yields."""
+    """Decompose a monthly panel of continuously compounded zero yields.
+
+    `consecutive[i]` says whether observation i + 1 is one month after observation i. None
+    means the panel has no gaps.
+    """
     panel = np.asarray(yields, dtype=float)
     maturities = np.asarray(maturities_months, dtype=float)
     _validate(panel, maturities, n_factors)
 
     months = panel.shape[0]
+    steps = _consecutive_mask(consecutive, months)
 
     # Step 1 — pricing factors.
-    factors = decompose(panel, n_components=n_factors).scores          # (months, K)
+    factors = decompose(panel, n_components=n_factors).scores  # (months, K)
 
     # Step 2 — VAR(1) on the factors.
-    lagged = np.column_stack([np.ones(months - 1), factors[:-1]])
-    coefficients = _ols(lagged, factors[1:])                           # (1+K, K)
-    mu = coefficients[0]                                               # (K,)
-    phi = coefficients[1:].T                                           # (K, K)
-    innovations = factors[1:] - lagged @ coefficients                  # (months-1, K)
+    lagged = np.column_stack([np.ones(months - 1), factors[:-1]])[steps]
+    coefficients = _ols(lagged, factors[1:][steps])  # (1+K, K)
+    mu = coefficients[0]  # (K,)
+    phi = coefficients[1:].T  # (K, K)
+    innovations = factors[1:][steps] - lagged @ coefficients  # (steps, K)
     sigma = innovations.T @ innovations / innovations.shape[0]
 
     # Step 3 — the price of risk, from excess holding-period returns.
     lambda0, lambda1, residual_variance = _price_of_risk(
-        panel, maturities, factors, innovations, sigma, n_factors
+        panel, maturities, factors, innovations, sigma, n_factors, steps
     )
 
     # Step 4 — the short rate as an affine function of the factors, then the recursion,
-    # run once under the risk-neutral dynamics and once with the price of risk removed.
+    # run once under the risk-adjusted dynamics and once with the price of risk removed.
     short_loadings = _ols(
         np.column_stack([np.ones(months), factors]), panel[:, 0] / MONTHS_PER_YEAR
     )
@@ -184,13 +226,12 @@ def estimate(
         )
 
     fitted = price(mu - lambda0, phi - lambda1)
-    risk_neutral = price(mu, phi)
+    expectations = price(mu, phi)
 
     return ACMResult(
         fitted=fitted,
-        risk_neutral=risk_neutral,
-        term_premium=fitted - risk_neutral,
-        maturities_months=maturities,
+        expectations=expectations,
+        term_premium=fitted - expectations,
         lambda0=lambda0,
         lambda1=lambda1,
     )

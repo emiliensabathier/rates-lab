@@ -13,8 +13,6 @@ import pandas as pd
 from rlab.curve.base import Curve
 from rlab.errors import DataError
 
-TIPS_TENORS: dict[str, float] = {"DFII5": 5.0, "DFII10": 10.0, "DFII30": 30.0}
-
 REAL_CURVE_START = pd.Timestamp("2003-01-02")
 THIRTY_YEAR_REAL_START = pd.Timestamp("2010-02-22")
 

@@ -3,25 +3,30 @@ import pytest
 
 from rlab.curve.bootstrap import PiecewiseZeroCurve
 from rlab.errors import ModelError
-from rlab.policy import implied_change_bp, implied_path
+from rlab.policy import implied_path
 
 
 def flat(rate: float) -> PiecewiseZeroCurve:
     return PiecewiseZeroCurve(np.array([0.25, 30.0]), np.array([rate, rate]))
 
 
+def _change_bp(curve, horizon_years: float = 1.0) -> float:
+    path = implied_path(curve, horizon_years=horizon_years + 0.25)
+    return float((path["forward_quoted"].iloc[-1] - path["forward_quoted"].iloc[0]) * 1e4)
+
+
 def test_a_flat_curve_prices_no_policy_change():
-    assert implied_change_bp(flat(0.04)) == pytest.approx(0.0, abs=1e-8)
+    assert _change_bp(flat(0.04)) == pytest.approx(0.0, abs=1e-8)
 
 
 def test_an_upward_sloping_curve_prices_hikes():
     curve = PiecewiseZeroCurve(np.array([0.25, 2.0]), np.array([0.03, 0.05]))
-    assert implied_change_bp(curve, horizon_years=1.0) > 0
+    assert _change_bp(curve) > 0
 
 
 def test_a_downward_sloping_curve_prices_cuts():
     curve = PiecewiseZeroCurve(np.array([0.25, 2.0]), np.array([0.05, 0.03]))
-    assert implied_change_bp(curve, horizon_years=1.0) < 0
+    assert _change_bp(curve) < 0
 
 
 def test_the_path_covers_the_horizon_at_the_requested_step():

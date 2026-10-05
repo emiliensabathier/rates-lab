@@ -6,7 +6,6 @@ from rlab.curve.bootstrap import PiecewiseZeroCurve
 from rlab.errors import DataError
 from rlab.inflation import (
     REAL_CURVE_START,
-    TIPS_TENORS,
     breakeven,
     forward_breakeven,
     require_real_coverage,
@@ -46,6 +45,5 @@ def test_coverage_passes_inside_the_published_window():
     require_real_coverage(pd.Timestamp("2026-08-05"), 30.0)
 
 
-def test_tips_tenors_are_the_three_published_maturities():
-    assert TIPS_TENORS == {"DFII5": 5.0, "DFII10": 10.0, "DFII30": 30.0}
+def test_the_real_curve_starts_when_the_tips_series_do():
     assert REAL_CURVE_START == pd.Timestamp("2003-01-02")

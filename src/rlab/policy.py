@@ -3,6 +3,11 @@
 A sequence of three-month forward rates read off the curve is the market's implied path for
 the short rate. It is not a forecast and it is not, on its own, an expectation either —
 rlab.termpremium is what separates the two. This module only reads the curve.
+
+How smooth the path looks is decided by the curve's interpolation, not here. On a curve
+linear in zero rates the forwards jump at every published pillar and rise in identical
+steps between them, which reads as a policy path and is only the shape of the interpolant;
+`rlab.curve.bootstrap` builds a monotone cubic on log discount factors so that it is not.
 """
 
 from __future__ import annotations
@@ -41,11 +46,3 @@ def implied_path(
             }
         )
     return pd.DataFrame(rows)
-
-
-def implied_change_bp(curve: Curve, horizon_years: float = 1.0) -> float:
-    """Change in the three-month forward rate between today and the horizon, in bp."""
-    path = implied_path(curve, horizon_years=horizon_years + QUARTER, step_years=QUARTER)
-    first = path.iloc[0]["forward_quoted"]
-    last = path.iloc[-1]["forward_quoted"]
-    return float((last - first) * 1e4)

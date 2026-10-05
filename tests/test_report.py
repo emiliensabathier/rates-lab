@@ -37,9 +37,7 @@ def rendered() -> str:
 
 
 def test_the_committed_report_matches_the_frozen_fixture(rendered):
-    committed, committed_charts = _without_charts(
-        COMMITTED.read_text(encoding="utf-8")
-    )
+    committed, committed_charts = _without_charts(COMMITTED.read_text(encoding="utf-8"))
     fresh, fresh_charts = _without_charts(rendered)
     assert committed == fresh
     assert committed_charts == fresh_charts == EXPECTED_CHARTS
@@ -54,9 +52,21 @@ def test_the_report_names_every_month_it_refused(rendered):
 
 def test_the_report_states_the_level_gap_next_to_the_correlation(rendered):
     """Both halves of the comparison, on the same page, or the page is misleading."""
-    assert "The correlation is the claim. The level is not." in rendered
-    assert "Correlation of levels" in rendered
+    assert "The level is not the claim." in rendered
+    assert "Correlation with Kim-Wright, levels" in rendered
     assert "Mean gap, this estimate minus Kim-Wright" in rendered
+
+
+def test_the_report_puts_the_naive_benchmark_next_to_the_model(rendered):
+    """A correlation means little without the one the ten-year yield alone gets."""
+    assert "Ten-year yield" in rendered
+    assert "Correlation with Kim-Wright, monthly changes" in rendered
+    assert "Levels: the model adds something. Changes: it does not." in rendered
+
+
+def test_the_report_leads_with_what_the_model_measures_well(rendered):
+    body, _ = _without_charts(rendered)
+    assert body.index("What this measures well") < body.index("expected\n+")
 
 
 def test_the_report_says_a_breakeven_is_not_expected_inflation(rendered):

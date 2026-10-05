@@ -18,8 +18,7 @@ import pandas as pd
 from rlab.errors import DataError
 
 BASE_URL = (
-    "https://data-api.ecb.europa.eu/service/data/YC/B.U2.EUR.4F.G_N_A.SV_C_YM.{key}"
-    "?format=csvdata"
+    "https://data-api.ecb.europa.eu/service/data/YC/B.U2.EUR.4F.G_N_A.SV_C_YM.{key}?format=csvdata"
 )
 
 SVENSSON_KEYS: tuple[str, ...] = ("BETA0", "BETA1", "BETA2", "BETA3", "TAU1", "TAU2")

@@ -32,9 +32,7 @@ class Curve(ABC):
         """Continuously compounded forward rate between two maturities."""
         if not t2 > t1:
             raise ModelError(f"forward rate requires t2 > t1, got t1={t1} t2={t2}")
-        return float(
-            (self.zero(t2) * t2 - self.zero(t1) * t1) / (t2 - t1)
-        )
+        return float((self.zero(t2) * t2 - self.zero(t1) * t1) / (t2 - t1))
 
     def par(self, t: float) -> float:
         """Semiannual-coupon par yield at maturity `t`, the CMT quoting convention."""

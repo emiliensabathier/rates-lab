@@ -19,7 +19,18 @@ TRANSITION = np.diag([0.995, 0.96, 0.90])
 INNOVATION_SCALE = np.diag([0.0030, 0.0020, 0.0012])
 SHORT_RATE_INTERCEPT = 0.04 / 12
 SHORT_RATE_LOADINGS = np.array([1.0, -0.6, 0.3]) / 12
-RISK_DIRECTION = np.array([1.0, 0.5, -0.2])
+# Signed so that a positive price of risk gives a positive ten-year premium, and scaled so
+# that PRICE_OF_RISK gives a mean ten-year premium of about 130 bp: the order of magnitude of
+# the published estimates, not the several hundred basis points a careless calibration
+# produces (an earlier version of this file generated a -857 bp premium).
+RISK_DIRECTION = -np.array([1.0, 0.5, -0.2])
+PRICE_OF_RISK = 0.0003
+
+# Monte Carlo design for the resolution tests: as many months as the real panel, and the
+# long panel the method is usually demonstrated on.
+DRAWS = 20
+REAL_PANEL_MONTHS = 300
+LONG_PANEL_MONTHS = 1200
 
 
 def _log_prices(drift, transition, factors):
@@ -55,14 +66,14 @@ def affine_panel(months: int, seed: int, price_of_risk: float, noise_bp: float =
 
 
 def test_the_decomposition_is_an_identity_by_construction():
-    panel, _ = affine_panel(400, seed=0, price_of_risk=0.002)
+    panel, _ = affine_panel(400, seed=0, price_of_risk=PRICE_OF_RISK)
     result = estimate(panel, MATURITIES)
-    assert np.allclose(result.term_premium, result.fitted - result.risk_neutral, atol=1e-15)
+    assert np.allclose(result.term_premium, result.fitted - result.expectations, atol=1e-15)
 
 
 def test_the_fitted_curve_reprices_a_panel_the_model_itself_generated():
     """Under no observation noise the fit is a numerical identity, not an approximation."""
-    panel, _ = affine_panel(400, seed=1, price_of_risk=0.002)
+    panel, _ = affine_panel(400, seed=1, price_of_risk=PRICE_OF_RISK)
     result = estimate(panel, MATURITIES)
     worst_bp = np.max(np.abs(result.fitted - panel)) * 1e4
     assert worst_bp < 1.0
@@ -70,39 +81,58 @@ def test_the_fitted_curve_reprices_a_panel_the_model_itself_generated():
 
 def test_observation_noise_degrades_the_fit_in_proportion_and_no_worse():
     """Real curves are not exactly affine, so the fit has to fail gracefully, not blow up."""
-    panel, _ = affine_panel(400, seed=2, price_of_risk=0.002, noise_bp=2.0)
+    panel, _ = affine_panel(400, seed=2, price_of_risk=PRICE_OF_RISK, noise_bp=2.0)
     result = estimate(panel, MATURITIES)
     worst_bp = np.max(np.abs(result.fitted - panel)) * 1e4
     assert worst_bp < 20.0
 
 
-def test_the_estimated_ten_year_premium_recovers_the_one_that_generated_the_panel():
-    panel, true_premium = affine_panel(1200, seed=3, price_of_risk=0.002)
-    result = estimate(panel, MATURITIES)
-    estimated_bp = result.term_premium.mean(axis=0)[TEN_YEAR] * 1e4
-    true_bp = true_premium.mean(axis=0)[TEN_YEAR] * 1e4
-    assert abs(estimated_bp - true_bp) < 0.15 * abs(true_bp)
+def _ten_year_mean_errors_bp(months: int, price_of_risk: float) -> np.ndarray:
+    """Estimated minus true mean ten-year premium, in bp, over DRAWS independent panels."""
+    errors = []
+    for draw in range(DRAWS):
+        panel, true_premium = affine_panel(months, seed=100 + draw, price_of_risk=price_of_risk)
+        estimated = estimate(panel, MATURITIES).term_premium.mean(axis=0)[TEN_YEAR]
+        errors.append((estimated - true_premium.mean(axis=0)[TEN_YEAR]) * 1e4)
+    return np.array(errors)
 
 
-def test_a_panel_with_no_price_of_risk_leaves_only_the_small_sample_bias():
-    """Set the true premium to zero and what is left is the estimator's own resolution."""
-    panel, true_premium = affine_panel(1200, seed=4, price_of_risk=0.0)
-    assert np.allclose(true_premium, 0.0, atol=1e-12)
-    result = estimate(panel, MATURITIES)
-    estimated_bp = abs(result.term_premium.mean(axis=0)[TEN_YEAR] * 1e4)
-    assert estimated_bp < 100.0
+def test_the_true_premium_is_of_a_realistic_size():
+    _, true_premium = affine_panel(LONG_PANEL_MONTHS, seed=3, price_of_risk=PRICE_OF_RISK)
+    assert 100.0 < true_premium.mean(axis=0)[TEN_YEAR] * 1e4 < 160.0
+
+
+def test_the_ten_year_premium_is_recovered_without_bias_on_a_long_panel():
+    """Measured: mean error -6 bp, standard deviation 42 bp across 20 panels of 1200 months."""
+    errors = _ten_year_mean_errors_bp(LONG_PANEL_MONTHS, PRICE_OF_RISK)
+    assert abs(errors.mean()) < 15.0
+    assert 30.0 < errors.std() < 55.0
+
+
+def test_on_a_panel_as_short_as_the_real_one_the_error_is_wide_and_has_no_reliable_sign():
+    """With no price of risk at all, what is left is the estimator's own resolution.
+
+    Measured on 20 panels of 300 months: mean error -19 bp, standard deviation 73 bp, range
+    -136 to +99 bp. There is no upward bias here, so the estimator's sampling error is an
+    uncertainty band on the real estimate, not an explanation for it sitting above
+    Kim-Wright.
+    """
+    errors = _ten_year_mean_errors_bp(REAL_PANEL_MONTHS, 0.0)
+    assert -40.0 < errors.mean() < 0.0
+    assert 55.0 < errors.std() < 90.0
+    assert errors.min() < 0.0 < errors.max()
 
 
 def test_a_larger_price_of_risk_produces_a_larger_premium():
-    small, _ = affine_panel(1200, seed=5, price_of_risk=0.001)
-    large, _ = affine_panel(1200, seed=5, price_of_risk=0.004)
+    small, _ = affine_panel(1200, seed=5, price_of_risk=PRICE_OF_RISK)
+    large, _ = affine_panel(1200, seed=5, price_of_risk=4 * PRICE_OF_RISK)
     small_bp = abs(estimate(small, MATURITIES).term_premium.mean(axis=0)[TEN_YEAR])
     large_bp = abs(estimate(large, MATURITIES).term_premium.mean(axis=0)[TEN_YEAR])
     assert large_bp > 2.0 * small_bp
 
 
 def test_the_ten_year_term_premium_is_a_finite_series_of_the_right_length():
-    panel, _ = affine_panel(400, seed=6, price_of_risk=0.002)
+    panel, _ = affine_panel(400, seed=6, price_of_risk=PRICE_OF_RISK)
     result = estimate(panel, MATURITIES)
     ten_year = result.term_premium[:, TEN_YEAR]
     assert ten_year.shape == (400,)
@@ -133,3 +163,20 @@ def test_a_maturity_grid_with_holes_raises_rather_than_interpolating_silently():
     gappy = np.array([3, 12, 24, 60, 84, 120], dtype=float)
     with pytest.raises(ModelError, match="monthly maturity grid"):
         estimate(panel[:, :6], gappy)
+
+
+def test_a_pair_marked_non_consecutive_is_left_out_of_the_dynamics():
+    panel, _ = affine_panel(400, seed=11, price_of_risk=PRICE_OF_RISK)
+    gapped = np.delete(panel, 200, axis=0)
+    consecutive = np.ones(gapped.shape[0] - 1, dtype=bool)
+    consecutive[199] = False
+    masked = estimate(gapped, MATURITIES, consecutive=consecutive)
+    unmasked = estimate(gapped, MATURITIES)
+    assert not np.allclose(masked.term_premium, unmasked.term_premium)
+    assert np.allclose(masked.term_premium, masked.fitted - masked.expectations, atol=1e-15)
+
+
+def test_a_consecutive_mask_of_the_wrong_length_raises():
+    panel, _ = affine_panel(200, seed=12, price_of_risk=0.0)
+    with pytest.raises(ModelError, match="consecutive"):
+        estimate(panel, MATURITIES, consecutive=np.ones(10, dtype=bool))
