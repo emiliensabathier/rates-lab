@@ -5,6 +5,16 @@ kept apart from each other rather than read off a forward rate and called an exp
 
 ![ci](https://github.com/emiliensabathier/rates-lab/actions/workflows/ci.yml/badge.svg)
 
+![Ten-year yield decomposed into the expected average short rate and the term premium](docs/term-premium.png)
+
+**In short**
+
+- On 2026-07-31 the ten-year zero rate of 4.74% splits into 2.47% expected short rate and 2.28% term premium (Adrian-Crump-Moench, 301 monthly curves since 2001).
+- The premium tracks the Fed's Kim-Wright estimate in levels (correlation 0.921, against 0.850 for the yield alone) but not in monthly changes, and sits about a point above it.
+- The bootstrap reprices every published par yield to 0.1 bp; the Svensson curve matches the ECB's published parameters to 1e-6.
+
+Rendered report: <https://emiliensabathier.github.io/rates-lab/>
+
 ## Results
 
 US Treasury constant maturities, 301 month-end curves from 2001-07 to 2026-07, each dated by
@@ -30,8 +40,6 @@ correlation using the ten-year yield itself in place of the model's premium.
   and it is not quoted as such.
 - **The level disagrees by about a point.** This estimate runs +0.98 pp above Kim-Wright on
   average, +1.41 pp on the latest date. See Limitations for what that gap is and is not.
-
-![Ten-year yield decomposed into the expected average short rate and the term premium](docs/term-premium.png)
 
 The latest decomposition, ten-year zero rate on 2026-07-31:
 **4.74% = 2.47% expected + 2.28% premium**, against a Kim-Wright premium of 0.87% the same
