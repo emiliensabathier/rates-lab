@@ -32,7 +32,8 @@ def _without_charts(page: str) -> tuple[str, int]:
 @pytest.fixture(scope="module")
 def rendered() -> str:
     with tempfile.TemporaryDirectory() as scratch:
-        result = run(cache_dir=Path(scratch), fetcher=frozen.fetcher)
+        result = run(cache_dir=Path(scratch), fetcher=frozen.fetcher,
+                     survey_fetcher=frozen.survey_fetcher)
     return render(result, generated_on=frozen.CAPTURED)
 
 
@@ -45,7 +46,8 @@ def test_the_committed_report_matches_the_frozen_fixture(rendered):
 
 def test_the_report_names_every_month_it_refused(rendered):
     with tempfile.TemporaryDirectory() as scratch:
-        result = run(cache_dir=Path(scratch), fetcher=frozen.fetcher)
+        result = run(cache_dir=Path(scratch), fetcher=frozen.fetcher,
+                     survey_fetcher=frozen.survey_fetcher)
     for date in result.refusals:
         assert date in rendered
 
@@ -87,3 +89,9 @@ def test_the_page_is_self_contained(rendered):
     assert "<script" not in body
     assert "<link" not in body
     assert "src=" not in body
+
+
+def test_the_report_carries_the_survey_test_of_the_level_gap(rendered):
+    assert "Anchored on the survey" in rendered
+    assert "Survey-anchored premium minus Kim-Wright" in rendered
+    assert "not tested here" not in rendered

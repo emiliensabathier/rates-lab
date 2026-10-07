@@ -34,7 +34,7 @@ import pandas as pd
 from rlab.curve.base import Curve
 from rlab.curve.bootstrap import bootstrap
 from rlab.curve.pca import PCAResult, decompose
-from rlab.data import fred
+from rlab.data import fred, spf
 from rlab.errors import DataError, ModelError
 from rlab.inflation import breakeven, forward_breakeven, require_real_coverage
 from rlab.policy import implied_path
@@ -80,6 +80,7 @@ class Result:
     acm: ACMResult
     pca: PCAResult
     benchmark: pd.Series
+    survey: pd.Series
     latest_curve: Curve
     policy_path: pd.DataFrame
     breakeven_spot_10y: float
@@ -193,6 +194,7 @@ def run(
     cache_dir: Path,
     refresh: bool = False,
     fetcher: fred.Fetcher = fred.http_fetcher,
+    survey_fetcher: spf.Fetcher = spf.http_fetcher,
 ) -> Result:
     """Load, bootstrap, decompose, estimate. Every figure the report prints starts here."""
     series = [*NOMINAL_PILLARS, *REAL_PILLARS, BENCHMARK_SERIES]
@@ -213,6 +215,7 @@ def run(
     # Same-day comparison: Kim-Wright on the day the curve was built, or not at all.
     benchmark = daily[BENCHMARK_SERIES].reindex(dates).astype(float) / 100.0
     benchmark.name = "kim_wright"
+    survey = spf.load(cache_dir, fetcher=survey_fetcher, refresh=refresh)
 
     as_of = dates[-1]
     latest_curve = bootstrap(
@@ -227,6 +230,7 @@ def run(
         acm=acm,
         pca=pca,
         benchmark=benchmark,
+        survey=survey,
         latest_curve=latest_curve,
         policy_path=implied_path(latest_curve, horizon_years=2.0),
         breakeven_spot_10y=breakeven(latest_curve, real_curve, TEN_YEARS),
@@ -264,4 +268,37 @@ def agreement(result: Result) -> dict[str, float]:
         "latest_gap": float(joined[model].iloc[-1] - joined[published].iloc[-1]),
         "latest_kim_wright": float(joined[published].iloc[-1]),
         "observations": float(len(joined)),
+    }
+
+
+def survey_anchor(result: Result) -> dict[str, float]:
+    """The level gap against Kim-Wright, with the model's expectations swapped for a survey's.
+
+    Each first-quarter Survey of Professional Forecasters asks for the three-month bill rate
+    averaged over the next ten years (``BILL10``). Its responses are due in the middle month
+    of the quarter, so each survey is set against that month's curve. Ten-year yield minus
+    the survey forecast is a survey-anchored premium, the decomposition Kim-Wright's survey
+    anchor pushes towards. Three approximations, each small next to a percentage point: the
+    survey forecasts a three-month bill where ACM averages the one-month zero rate, the bill
+    is quoted on a discount basis, and the survey premium carries convexity that ACM's
+    expectations exclude.
+    """
+    frame = pd.concat(
+        [result.expectations_10y, result.observed_10y, result.term_premium_10y, result.benchmark],
+        axis=1,
+    )
+    frame = frame[frame.index.month % 3 == 2]
+    frame = frame.assign(survey=frame.index.to_period("Q").map(result.survey)).dropna()
+    if frame.empty:
+        raise DataError("no survey date falls inside the panel")
+    survey_premium = frame["observed"] - frame["survey"]
+    return {
+        "surveys": float(len(frame)),
+        "first_survey": float(frame.index[0].year),
+        "expectations_minus_survey": float((frame["expectations"] - frame["survey"]).mean()),
+        "model_gap": float((frame["term_premium"] - frame["kim_wright"]).mean()),
+        "survey_gap": float((survey_premium - frame["kim_wright"]).mean()),
+        "survey_correlation_levels": float(survey_premium.corr(frame["kim_wright"])),
+        "latest_survey": float(frame["survey"].iloc[-1]),
+        "latest_survey_expectations": float(frame["expectations"].iloc[-1]),
     }

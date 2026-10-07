@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import html as html_escape
 
-from rlab.pipeline import MATURITY_MONTHS, N_FACTORS, Result, agreement
+from rlab.pipeline import MATURITY_MONTHS, N_FACTORS, Result, agreement, survey_anchor
 from rlab.report.charts import (
     benchmark_chart,
     decomposition_chart,
@@ -103,6 +103,33 @@ def _validation(stats: dict[str, float]) -> str:
         ["Overlapping months", f"{int(stats['observations'])}", ""],
     ]
     return _table(["Against the Kim-Wright series", "ACM premium", "Ten-year yield"], rows)
+
+
+def _survey(stats: dict[str, float]) -> str:
+    rows = [
+        ["ACM expectations minus the survey forecast", _pp(stats["expectations_minus_survey"])],
+        ["ACM premium minus Kim-Wright", _pp(stats["model_gap"])],
+        ["Survey-anchored premium minus Kim-Wright", _pp(stats["survey_gap"])],
+        ["Correlation of the survey-anchored premium with Kim-Wright, levels",
+         f"{stats['survey_correlation_levels']:.3f}"],
+    ]
+    table = _table([f"Mean over {int(stats['surveys'])} first-quarter surveys", ""], rows)
+    return f"""<p>Each first-quarter Survey of Professional Forecasters (Federal Reserve Bank of
+Philadelphia) asks for the three-month bill rate averaged over the next ten years. Set
+against the curve of the month the responses are due, from {int(stats["first_survey"])}
+onwards, the forecasters expected a higher path than ACM's: on the latest survey
+{_pct(stats["latest_survey"])} against the model's {_pct(stats["latest_survey_expectations"])}.
+Take the ten-year yield minus the survey forecast as the premium, and the level gap against
+Kim-Wright all but closes.</p>
+{table}
+<div class="caveat">
+<strong>The gap is the anchor.</strong> ACM's expected path sits below the forecasters' by
+about the amount its premium sits above Kim-Wright's, so the level disagreement is a
+disagreement about expectations, not about how the yield is priced. The survey-anchored
+premium tracks Kim-Wright's level less closely than ACM does: one observation a year, a
+three-month bill on a discount basis rather than the one-month zero rate, and convexity left
+in. It settles where the level comes from, not which month-to-month path is right.
+</div>"""
 
 
 def _fit_summary(result: Result) -> str:
@@ -203,10 +230,11 @@ rather than above (the test suite measures it), so it is a band around the estim
 explanation of the gap. The most likely source is the difference between the models.
 Kim-Wright pins its expected path to survey forecasts; ACM has no anchor but the sample, so
 its expected path reverts toward the sample's average one-month rate of
-{_pct(result.average_short_rate)}. Where surveys expected a different path from that
-reversion, the two models split the same yield differently. That is a hypothesis, not tested
-here.
+{_pct(result.average_short_rate)}. The next section tests that explanation.
 </div>
+
+<h2>Anchored on the survey</h2>
+{_survey(survey_anchor(result))}
 
 {benchmark_chart(result.term_premium_10y, result.benchmark)}
 

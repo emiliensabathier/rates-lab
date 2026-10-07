@@ -27,7 +27,8 @@ OUTPUT = ROOT / "reports" / "rates.html"
 def build() -> str:
     """Run the whole pipeline against the frozen payloads and return the page."""
     with tempfile.TemporaryDirectory() as scratch:
-        result = run(cache_dir=Path(scratch), fetcher=frozen.fetcher)
+        result = run(cache_dir=Path(scratch), fetcher=frozen.fetcher,
+                     survey_fetcher=frozen.survey_fetcher)
     return render(result, generated_on=frozen.CAPTURED)
 
 

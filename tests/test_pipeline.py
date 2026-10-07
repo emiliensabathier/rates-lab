@@ -22,6 +22,7 @@ from rlab.pipeline import (
     consecutive_months,
     month_end_quotes,
     run,
+    survey_anchor,
 )
 
 EXPECTED_MONTHS = 301
@@ -48,6 +49,17 @@ EXPECTED_AGREEMENT = {
     "observations": 301.0,
 }
 
+EXPECTED_SURVEY = {
+    "surveys": 25.0,
+    "first_survey": 2002.0,
+    "expectations_minus_survey": -0.01225543,
+    "model_gap": 0.00973627,
+    "survey_gap": -0.00245924,
+    "survey_correlation_levels": 0.605862,
+    "latest_survey": 0.03,
+    "latest_survey_expectations": 0.02100916,
+}
+
 EXPECTED_EXPLAINED = (0.893028, 0.0756697, 0.0212761)
 EXPECTED_BREAKEVEN_10Y = 0.02265397
 EXPECTED_BREAKEVEN_5Y5Y = 0.02300663
@@ -57,7 +69,8 @@ EXPECTED_BREAKEVEN_5Y5Y = 0.02300663
 def frozen_result() -> Result:
     """One pipeline run against the frozen payloads, shared by every test here."""
     with tempfile.TemporaryDirectory() as scratch:
-        return run(cache_dir=Path(scratch), fetcher=frozen.fetcher)
+        return run(cache_dir=Path(scratch), fetcher=frozen.fetcher,
+                   survey_fetcher=frozen.survey_fetcher)
 
 
 def test_the_panel_spans_the_window_the_one_month_bill_allows(frozen_result):
@@ -137,6 +150,33 @@ def test_the_level_gap_against_kim_wright_is_published_not_hidden(frozen_result)
     """
     stats = agreement(frozen_result)
     assert stats["mean_gap"] > 0.005
+
+
+def test_the_survey_anchor_is_pinned(frozen_result):
+    stats = survey_anchor(frozen_result)
+    for name, expected in EXPECTED_SURVEY.items():
+        assert stats[name] == pytest.approx(expected, rel=1e-4)
+
+
+def test_anchoring_expectations_on_the_survey_closes_the_level_gap(frozen_result):
+    """The hypothesis the report used to leave untested, now tested.
+
+    ACM's expected path sits below the forecasters' on the survey dates, and by about the
+    amount its premium sits above Kim-Wright's. Replace the model's expectations by the
+    survey and the premium lands within a third of a point of Kim-Wright. If a change ever
+    breaks this, the report's conclusion has to be rewritten, not the threshold.
+    """
+    stats = survey_anchor(frozen_result)
+    assert stats["expectations_minus_survey"] < -0.005
+    assert abs(stats["survey_gap"]) < abs(stats["model_gap"]) / 3
+
+
+def test_a_panel_with_no_survey_date_is_refused(frozen_result):
+    from dataclasses import replace
+
+    empty = replace(frozen_result, survey=frozen_result.survey.iloc[:0])
+    with pytest.raises(DataError, match="no survey date"):
+        survey_anchor(empty)
 
 
 def test_three_components_carry_the_monthly_curve_changes(frozen_result):

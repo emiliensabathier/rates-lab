@@ -25,3 +25,9 @@ def fetcher(series_id: str) -> str:
             f"{series_id} is not in the frozen capture; re-run scripts/capture_fixture.py"
         )
     return payload.read_text(encoding="utf-8")
+
+
+def survey_fetcher() -> bytes:
+    """Serve the frozen SPF workbook, captured 2026-10-07; its last survey, 2026Q1, predates
+    the FRED capture, so freezing it later changes nothing the panel can reach."""
+    return (Path(__file__).resolve().parent / "spf" / "median_bill10_level.xlsx").read_bytes()

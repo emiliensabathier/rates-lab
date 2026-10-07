@@ -29,7 +29,8 @@ DPI = 130
 
 def main() -> None:
     with tempfile.TemporaryDirectory() as scratch:
-        result = run(cache_dir=Path(scratch), fetcher=frozen.fetcher)
+        result = run(cache_dir=Path(scratch), fetcher=frozen.fetcher,
+                     survey_fetcher=frozen.survey_fetcher)
 
     figure = decomposition_figure(result.observed_10y, result.expectations_10y)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
